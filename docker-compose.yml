@@ -1,0 +1,14 @@
+
+services:
+  sobel_master:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sobel_master
+    environment:
+      - NUM_PROCESOS=8         # Número de procesos paralelos
+      - TIMEOUT=5              # Tiempo de espera tolerado por worker
+    volumes:
+      - .:/app                 # Monta tu carpeta actual al contenedor
+    working_dir: /app
+    command: ["python", "main.py"]
