@@ -1,0 +1,102 @@
+# Secret para usuario y contraseña
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+type: Opaque
+data:
+  rabbitmq-user: cm9vdA==         # "root" en base64
+  rabbitmq-password: c2VjcmV0     # "secret" en base64
+
+---
+# ConfigMap para configuración
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+data:
+  enabled_plugins: |
+    [rabbitmq_management].
+
+---
+# StatefulSet con InitContainer y volumen
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+spec:
+  serviceName: "rabbitmq"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      initContainers:
+      - name: init-config
+        image: busybox
+        command: ["sh", "-c", "cp /config/enabled_plugins /config-data/enabled_plugins"]
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+        - name: config-data
+          mountPath: /config-data
+
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3-management
+        ports:
+        - containerPort: 5672
+        - containerPort: 15672
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: rabbitmq-user
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: rabbitmq-password
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/rabbitmq
+        - name: config-data
+          mountPath: /etc/rabbitmq/enabled_plugins
+          subPath: enabled_plugins
+
+      volumes:
+      - name: config-volume
+        configMap:
+          name: rabbitmq-config
+      - name: config-data
+        emptyDir: {}
+
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+
+---
+# Headless Service requerido por StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  clusterIP: None
+  selector:
+    app: rabbitmq
+  ports:
+  - port: 5672
+    targetPort: 5672
+  - port: 15672
+    targetPort: 15672
